@@ -1,0 +1,11 @@
+[package]
+name = "const-buffer"
+version = "0.1.0"
+authors = ["Tim Vermeulen <tvermeulen@me.com>"]
+edition = "2018"
+keywords = ["array", "no_std", "stack"]
+categories = ["data-structures", "no-std"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "A fixed-capacity memory buffer allocated on the stack using const generics."
+repository = "https://github.com/timvermeulen/const-buffer"
