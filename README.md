@@ -1,5 +1,9 @@
 # const-buffer
 
+[![crates.io](https://img.shields.io/crates/v/const-buffer)](https://crates.io/crates/const-buffer)
+[![docs.rs](https://docs.rs/const-buffer/badge.svg)](https://docs.rs/const-buffer)
+![rustc version](https://img.shields.io/badge/rustc-nightly-inactive)
+
 A fixed-capacity memory buffer allocated on the stack using const generics.
 
 This is a low-level utility, useful for implementing higher-level data structures such as fixed-capacity vectors and ring buffers. Since `ConstBuffer`'s main purpose is to build safe abstractions on top of, almost its entire API surface is `unsafe`.
