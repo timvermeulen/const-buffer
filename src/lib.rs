@@ -83,7 +83,7 @@ extern crate std;
 use core::{
     cmp,
     fmt::{self, Debug, Formatter},
-    mem::MaybeUninit,
+    mem::{ManuallyDrop, MaybeUninit},
     ops::{Bound, Range, RangeBounds},
     ptr,
     slice::{self, SliceIndex},
@@ -110,19 +110,19 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     /// Creates a new `ConstBuffer` from a `MaybeUninit<[T; N]>`.
     #[inline]
     const fn from_maybe_uninit_array(maybe_uninit: MaybeUninit<[T; N]>) -> Self {
+        union Transmute<T, const N: usize> {
+            maybe_uninit: MaybeUninit<[T; N]>,
+            array: ManuallyDrop<[MaybeUninit<T>; N]>,
+        }
+
         // SAFETY: `MaybeUninit<T>` is guaranteed to have the same layout as `T`, and
         // arrays are guaranteed to lay out their elements consecutively, so
         // `MaybeUninit<[T; N]>` and `[MaybeUninit<T>, N]` are guaranteed to have the
         // same layout. See:
         // - https://doc.rust-lang.org/beta/std/mem/union.MaybeUninit.html#layout
         // - https://doc.rust-lang.org/reference/type-layout.html#array-layout
-        unsafe {
-            union Transmute<T, const N: usize> {
-                maybe_uninit: MaybeUninit<[T; N]>,
-                array: [MaybeUninit<T>; N],
-            }
-            Self(Transmute { maybe_uninit }.array)
-        }
+        let array = unsafe { Transmute { maybe_uninit }.array };
+        Self(ManuallyDrop::into_inner(array))
     }
 
     /// Creates a new `ConstBuffer` from an array with the same size.
