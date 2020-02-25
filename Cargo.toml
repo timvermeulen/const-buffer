@@ -1,6 +1,6 @@
 [package]
 name = "const-buffer"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tim Vermeulen <tvermeulen@me.com>"]
 edition = "2018"
 keywords = ["array", "no_std", "stack"]
