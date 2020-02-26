@@ -382,7 +382,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
         index.get_mut(self)
     }
 
-    /// Swaps the elements at indices `i` and `j`. `i` and `j` may be equal.
+    /// Swaps the elements at indices `i` and `j`. `i` and `j` may be equal. The
+    /// elements at the given indices are not required to be in an initialized
+    /// state.
     ///
     /// # Safety
     ///
@@ -410,11 +412,12 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn swap(&mut self, i: usize, j: usize) {
         debug_assert!(i < N && j < N);
-        ptr::swap(self.as_mut_ptr().add(i), self.as_mut_ptr().add(j));
+        ptr::swap(self.0.as_mut_ptr().add(i), self.0.as_mut_ptr().add(j));
     }
 
     /// Swaps the elements at indices `i` and `j`. `i` and `j` must not be
-    /// equal to each other.
+    /// equal to each other. The elements at the given indices are not required
+    /// to be in an initialized state.
     ///
     /// # Safety
     ///
@@ -441,7 +444,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn swap_nonoverlapping(&mut self, i: usize, j: usize) {
         debug_assert!(i < N && j < N && i != j);
-        ptr::swap_nonoverlapping(self.as_mut_ptr().add(i), self.as_mut_ptr().add(j), 1);
+        ptr::swap_nonoverlapping(self.0.as_mut_ptr().add(i), self.0.as_mut_ptr().add(j), 1);
     }
 
     /// Creates a new buffer with a potentially different size.
