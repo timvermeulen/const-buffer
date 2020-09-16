@@ -327,7 +327,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     #[track_caller]
     pub unsafe fn get<'a, I>(&'a self, index: I) -> &I::Output
-    where I: BufferIndex<'a, T> {
+    where
+        I: BufferIndex<'a, T>,
+    {
         index.get(self)
     }
 
@@ -376,7 +378,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     #[track_caller]
     pub unsafe fn get_mut<'a, I>(&'a mut self, index: I) -> &mut I::Output
-    where I: BufferIndex<'a, T> {
+    where
+        I: BufferIndex<'a, T>,
+    {
         index.get_mut(self)
     }
 
@@ -493,7 +497,11 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     pub fn resize<const M: usize>(&self) -> ConstBuffer<T, M> {
         let mut new = ConstBuffer::new();
-        unsafe { self.0.as_ptr().copy_to_nonoverlapping(new.0.as_mut_ptr(), cmp::min(N, M)) };
+        unsafe {
+            self.0
+                .as_ptr()
+                .copy_to_nonoverlapping(new.0.as_mut_ptr(), cmp::min(N, M))
+        };
         new
     }
 
@@ -551,11 +559,16 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     #[track_caller]
     pub unsafe fn copy_within<R>(&mut self, src: R, dest: usize)
-    where R: RangeBounds<usize> {
+    where
+        R: RangeBounds<usize>,
+    {
         let src = to_range(src, N);
         debug_assert!(src.start <= src.end && src.end <= N && dest + src.len() <= N);
         // we can't call `copy_within` on `self.0` because `MaybeUninit` isn't `Copy`
-        self.0.as_ptr().add(src.start).copy_to(self.0.as_mut_ptr().add(dest), src.len());
+        self.0
+            .as_ptr()
+            .add(src.start)
+            .copy_to(self.0.as_mut_ptr().add(dest), src.len());
     }
 
     /// Copies elements from one part of the buffer to another part of itself.
@@ -614,14 +627,18 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     #[track_caller]
     pub unsafe fn copy_within_nonoverlapping<R>(&mut self, src: R, dest: usize)
-    where R: RangeBounds<usize> {
+    where
+        R: RangeBounds<usize>,
+    {
         let src = to_range(src, N);
         debug_assert!(src.start <= src.end && src.end <= N && dest + src.len() <= N);
         debug_assert!(
             src.len() <= cmp::max(src.start, dest) - cmp::min(src.start, dest),
             "attempt to copy to overlapping memory"
         );
-        self.as_ptr().add(src.start).copy_to_nonoverlapping(self.as_mut_ptr().add(dest), src.len())
+        self.as_ptr()
+            .add(src.start)
+            .copy_to_nonoverlapping(self.as_mut_ptr().add(dest), src.len())
     }
 
     /// Copies the elements from the given slice into `self`, starting at
@@ -673,7 +690,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn copy_from_slice(&mut self, index: usize, slice: &[T]) {
         debug_assert!(index + slice.len() <= N);
-        slice.as_ptr().copy_to_nonoverlapping(self.as_mut_ptr().add(index), slice.len());
+        slice
+            .as_ptr()
+            .copy_to_nonoverlapping(self.as_mut_ptr().add(index), slice.len());
     }
 
     /// Clones the elements from the given slice into `self`, starting at
@@ -706,7 +725,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     #[track_caller]
     pub unsafe fn clone_from_slice(&mut self, index: usize, slice: &[T])
-    where T: Clone {
+    where
+        T: Clone,
+    {
         debug_assert!(index + slice.len() <= N);
         (index..).zip(slice).for_each(|(i, x)| {
             self.write(i, x.clone());
@@ -796,7 +817,12 @@ impl<T, const N: usize> Clone for ConstBuffer<T, N> {
 
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        unsafe { source.0.as_ptr().copy_to_nonoverlapping(self.0.as_mut_ptr(), N) };
+        unsafe {
+            source
+                .0
+                .as_ptr()
+                .copy_to_nonoverlapping(self.0.as_mut_ptr(), N)
+        };
     }
 }
 
@@ -848,7 +874,8 @@ pub trait BufferIndex<'a, T> {
 }
 
 impl<'a, T, O: ?Sized, I> BufferIndex<'a, T> for I
-where I: SliceIndex<[MaybeUninit<T>], Output: UninitWrapper<Output = O> + 'a> + Clone
+where
+    I: SliceIndex<[MaybeUninit<T>], Output: UninitWrapper<Output = O> + 'a> + Clone,
 {
     type Output = O;
 
@@ -860,8 +887,7 @@ where I: SliceIndex<[MaybeUninit<T>], Output: UninitWrapper<Output = O> + 'a> + 
     unsafe fn get_mut<const N: usize>(
         self,
         buffer: &'a mut ConstBuffer<T, N>,
-    ) -> &'a mut Self::Output
-    {
+    ) -> &'a mut Self::Output {
         debug_assert!(buffer.0.get(self.clone()).is_some());
         buffer.0.get_unchecked_mut(self).get_mut()
     }
