@@ -61,14 +61,12 @@
 #![no_std]
 #![feature(
     associated_type_bounds,
-    const_fn,
     const_fn_union,
-    const_generics,
+    min_const_generics,
     const_mut_refs,
     maybe_uninit_extra,
     maybe_uninit_ref,
-    maybe_uninit_slice_assume_init,
-    track_caller,
+    maybe_uninit_slice,
     untagged_unions
 )]
 #![allow(incomplete_features)]
@@ -254,7 +252,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn read(&self, index: usize) -> T {
         debug_assert!(index < N);
-        self.0.get_unchecked(index).read()
+        self.0.get_unchecked(index).assume_init_read()
     }
 
     /// Sets the element at `index`.
@@ -889,11 +887,11 @@ impl<T> UninitWrapper for MaybeUninit<T> {
     type Output = T;
 
     unsafe fn get(&self) -> &Self::Output {
-        self.get_ref()
+        self.assume_init_ref()
     }
 
     unsafe fn get_mut(&mut self) -> &mut Self::Output {
-        self.get_mut()
+        self.assume_init_mut()
     }
 }
 
@@ -901,10 +899,10 @@ impl<T> UninitWrapper for [MaybeUninit<T>] {
     type Output = [T];
 
     unsafe fn get(&self) -> &Self::Output {
-        MaybeUninit::slice_get_ref(self)
+        MaybeUninit::slice_assume_init_ref(self)
     }
 
     unsafe fn get_mut(&mut self) -> &mut Self::Output {
-        MaybeUninit::slice_get_mut(self)
+        MaybeUninit::slice_assume_init_mut(self)
     }
 }
