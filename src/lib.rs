@@ -714,7 +714,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///     buffer.clone_from_slice(3, &vec);
     ///     let mut x = buffer.read(4);
     ///
-    ///     // `x` is a clone of `vec[1]`, so this will no affect the
+    ///     // `x` is a clone of `vec[1]`, so this will not affect the
     ///     // original vector.
     ///     x.reverse();
     ///     assert_eq!(x, &[6, 5, 4]);
