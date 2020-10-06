@@ -67,7 +67,8 @@
     maybe_uninit_extra,
     maybe_uninit_ref,
     maybe_uninit_slice,
-    untagged_unions
+    untagged_unions,
+    const_ptr_offset
 )]
 #![allow(incomplete_features)]
 
@@ -226,8 +227,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     /// ```
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        // TODO: use `slice::as_mut_ptr` once it is `const`
-        (&mut self.0 as *mut [MaybeUninit<T>; N]).cast()
+        self.0.as_mut_ptr().cast()
     }
 
     /// Reads the element at `index`.
