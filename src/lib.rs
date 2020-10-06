@@ -68,9 +68,11 @@
     maybe_uninit_ref,
     maybe_uninit_slice,
     untagged_unions,
+    unsafe_block_in_unsafe_fn,
     const_ptr_offset
 )]
 #![allow(incomplete_features)]
+#![warn(unsafe_op_in_unsafe_fn)]
 
 #[cfg(test)]
 mod tests;
@@ -85,7 +87,7 @@ use core::{
     mem::{ManuallyDrop, MaybeUninit},
     ops::{Bound, Range, RangeBounds},
     ptr,
-    slice::{self, SliceIndex},
+    slice::SliceIndex,
 };
 
 fn to_range(range: impl RangeBounds<usize>, len: usize) -> Range<usize> {
@@ -234,8 +236,8 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that `index` is not out of bounds, and
-    /// that the element at `index` is in an initialized state.
+    /// It is up to the caller to ensure that `index` is in-bounds, and that the
+    /// element at `index` is in an initialized state.
     ///
     /// # Examples
     ///
@@ -252,7 +254,13 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn read(&self, index: usize) -> T {
         debug_assert!(index < N);
-        self.0.get_unchecked(index).assume_init_read()
+
+        // SAFETY:
+        // - `get_unchecked` requires that `index` is in-bounds
+        // - `assume_init_read` requires that the element at `index` is in an
+        //   initialized state
+        // Both of these requirements are required by `read` as well.
+        unsafe { self.0.get_unchecked(index).assume_init_read() }
     }
 
     /// Sets the element at `index`.
@@ -263,9 +271,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that `index` is not out of bounds. The
-    /// old contents at `index` aren't dropped, so the element at `index` does
-    /// not need to be in an initialized state.
+    /// It is up to the caller to ensure that `index` is in-bounds. The old
+    /// contents at `index` aren't dropped, so the element at `index` does not
+    /// need to be in an initialized state.
     ///
     /// # Examples
     ///
@@ -283,7 +291,10 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn write(&mut self, index: usize, value: T) -> &mut T {
         debug_assert!(index < N);
-        self.0.get_unchecked_mut(index).write(value)
+
+        // SAFETY: `get_unchecked_mut` requires that `index` is in-bounds, which `write`
+        // requires as well.
+        unsafe { self.0.get_unchecked_mut(index) }.write(value)
     }
 
     /// Returns a reference to an element or subslice depending on the type of
@@ -295,8 +306,8 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that the position or range is not out
-    /// of bounds, and that the corresponding elements are in an initialized
+    /// It is up to the caller to ensure that the position or range is
+    /// in-bounds, and that the corresponding elements are in an initialized
     /// state.
     ///
     /// # Examples
@@ -330,7 +341,8 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     where
         I: BufferIndex<'a, T>,
     {
-        index.get(self)
+        // SAFETY: `BufferIndex::get` has the same safety requirements as this method.
+        unsafe { index.get(self) }
     }
 
     /// Returns a mutable reference to an element or subslice depending on the
@@ -338,8 +350,8 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that the position or range is not out
-    /// of bounds, and that the corresponding elements are in an initialized
+    /// It is up to the caller to ensure that the position or range is
+    /// in-bounds, and that the corresponding elements are in an initialized
     /// state.
     ///
     /// # Examples
@@ -381,7 +393,9 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     where
         I: BufferIndex<'a, T>,
     {
-        index.get_mut(self)
+        // SAFETY: `BufferIndex::get_mut` has the same safety requirements as this
+        // method.
+        unsafe { index.get_mut(self) }
     }
 
     /// Swaps the elements at indices `i` and `j`. `i` and `j` may be equal. The
@@ -390,8 +404,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that `i` and `j`  are not out of
-    /// bounds.
+    /// It is up to the caller to ensure that `i` and `j` are in-bounds.
     ///
     /// # Examples
     ///
@@ -414,7 +427,13 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn swap(&mut self, i: usize, j: usize) {
         debug_assert!(i < N && j < N);
-        ptr::swap(self.0.as_mut_ptr().add(i), self.0.as_mut_ptr().add(j));
+
+        // SAFETY: `i` and `j` are required to be in-bounds.
+        unsafe {
+            let x = self.0.as_mut_ptr().add(i);
+            let y = self.0.as_mut_ptr().add(j);
+            ptr::swap(x, y);
+        }
     }
 
     /// Swaps the elements at indices `i` and `j`. `i` and `j` must not be
@@ -423,8 +442,8 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that `i` and `j`  are not out of
-    /// bounds, and that `i` and `j` are not equal to each other.
+    /// It is up to the caller to ensure that `i` and `j` are in-bounds, and
+    /// that `i` and `j` are not equal to each other.
     ///
     /// # Examples
     ///
@@ -446,7 +465,14 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn swap_nonoverlapping(&mut self, i: usize, j: usize) {
         debug_assert!(i < N && j < N && i != j);
-        ptr::swap_nonoverlapping(self.0.as_mut_ptr().add(i), self.0.as_mut_ptr().add(j), 1);
+
+        // SAFETY: `i` and `j` are required to be in-bounds and distinct, which implies
+        // that the bytes being swapped do not overlap.
+        unsafe {
+            let x = self.0.as_mut_ptr().add(i);
+            let y = self.0.as_mut_ptr().add(j);
+            ptr::swap_nonoverlapping(x, y, 1);
+        }
     }
 
     /// Creates a new buffer with a potentially different size.
@@ -497,11 +523,16 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[inline]
     pub fn resize<const M: usize>(&self) -> ConstBuffer<T, M> {
         let mut new = ConstBuffer::new();
-        unsafe {
-            self.0
-                .as_ptr()
-                .copy_to_nonoverlapping(new.0.as_mut_ptr(), cmp::min(N, M))
-        };
+
+        let src = self.0.as_ptr();
+        let dest = new.0.as_mut_ptr();
+        let len = cmp::min(N, M);
+
+        // SAFETY: `len` is in-bounds for both `self` and `new` by construction, and the
+        // memory regions don't overlap because they're part of different
+        // `ConstBuffer`s.
+        unsafe { ptr::copy_nonoverlapping(src, dest, len) };
+
         new
     }
 
@@ -517,8 +548,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that the two ranges are in-bounds, and
-    /// that the end of `src` is before the start.
+    /// It is up to the caller to ensure that the two ranges are in-bounds.
     ///
     /// # Examples
     ///
@@ -562,13 +592,17 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     where
         R: RangeBounds<usize>,
     {
+        // we can't call `copy_within` on `self.0` because `MaybeUninit` isn't `Copy`
+
         let src = to_range(src, N);
         debug_assert!(src.start <= src.end && src.end <= N && dest + src.len() <= N);
-        // we can't call `copy_within` on `self.0` because `MaybeUninit` isn't `Copy`
-        self.0
-            .as_ptr()
-            .add(src.start)
-            .copy_to(self.0.as_mut_ptr().add(dest), src.len());
+
+        // SAFETY: The two ranges are required to be in-bounds.
+        unsafe {
+            let src_ptr = self.0.as_ptr().add(src.start);
+            let dest_ptr = self.0.as_mut_ptr().add(dest);
+            ptr::copy(src_ptr, dest_ptr, src.len());
+        }
     }
 
     /// Copies elements from one part of the buffer to another part of itself.
@@ -586,9 +620,8 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure that the two ranges are in-bounds, that
-    /// the two ranges don't overlap, and that the end of `src` is before
-    /// the start.
+    /// It is up to the caller to ensure that the two ranges are in-bounds, and
+    /// that the two ranges don't overlap.
     ///
     /// # Examples
     ///
@@ -636,9 +669,13 @@ impl<T, const N: usize> ConstBuffer<T, N> {
             src.len() <= cmp::max(src.start, dest) - cmp::min(src.start, dest),
             "attempt to copy to overlapping memory"
         );
-        self.as_ptr()
-            .add(src.start)
-            .copy_to_nonoverlapping(self.as_mut_ptr().add(dest), src.len())
+
+        // SAFETY: The two ranges are required to be in-bounds and to not overlap.
+        unsafe {
+            let src_ptr = self.as_ptr().add(src.start);
+            let dest_ptr = self.as_mut_ptr().add(dest);
+            ptr::copy_nonoverlapping(src_ptr, dest_ptr, src.len());
+        }
     }
 
     /// Copies the elements from the given slice into `self`, starting at
@@ -690,9 +727,14 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     #[track_caller]
     pub unsafe fn copy_from_slice(&mut self, index: usize, slice: &[T]) {
         debug_assert!(index + slice.len() <= N);
-        slice
-            .as_ptr()
-            .copy_to_nonoverlapping(self.as_mut_ptr().add(index), slice.len());
+
+        // SAFETY: `index` is required to be in-bounds.
+        let dest = unsafe { self.as_mut_ptr().add(index) };
+
+        // SAFETY: The range `index..(index + slice.len())` is required to be in-bounds,
+        // and `slice` is guaranteed to not overlap with `self` because this method
+        // requires a unique reference to `self`.
+        unsafe { slice.as_ptr().copy_to_nonoverlapping(dest, slice.len()) };
     }
 
     /// Clones the elements from the given slice into `self`, starting at
@@ -730,7 +772,10 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     {
         debug_assert!(index + slice.len() <= N);
         (index..).zip(slice).for_each(|(i, x)| {
-            self.write(i, x.clone());
+            // SAFETY: It is up to the caller of `clone_from_slice` to ensure that
+            // `index + slice.len() <= N`. It follows that `i < N`, which is exactly what
+            // `write` requires.
+            unsafe { self.write(i, x.clone()) };
         });
     }
 
@@ -757,7 +802,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     /// [`MaybeUninit`]: core::mem::MaybeUninit
     #[inline]
     pub fn as_maybe_uninit_slice(&self) -> &[MaybeUninit<T>] {
-        unsafe { slice::from_raw_parts(self.0.as_ptr(), N) }
+        &self.0
     }
 
     /// Returns a mutable [`MaybeUninit`] slice to the
@@ -785,7 +830,7 @@ impl<T, const N: usize> ConstBuffer<T, N> {
     /// [`MaybeUninit`]: core::mem::MaybeUninit
     #[inline]
     pub fn as_maybe_uninit_mut_slice(&mut self) -> &mut [MaybeUninit<T>] {
-        unsafe { slice::from_raw_parts_mut(self.0.as_mut_ptr(), N) }
+        &mut self.0
     }
 }
 
@@ -817,12 +862,12 @@ impl<T, const N: usize> Clone for ConstBuffer<T, N> {
 
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        unsafe {
-            source
-                .0
-                .as_ptr()
-                .copy_to_nonoverlapping(self.0.as_mut_ptr(), N)
-        };
+        let src = source.0.as_ptr();
+        let dest = self.0.as_mut_ptr();
+
+        // SAFETY: The memory regions don't overlap because they correspond to different
+        // `ConstBuffer`s.
+        unsafe { ptr::copy_nonoverlapping(src, dest, N) };
     }
 }
 
@@ -866,7 +911,22 @@ impl<T, const N: usize> From<MaybeUninit<[T; N]>> for ConstBuffer<T, N> {
 pub trait BufferIndex<'a, T> {
     type Output: ?Sized;
 
+    /// Returns a shared reference to the output at this location, without
+    /// performing any bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// It is up to the caller to ensure that the index is in-bounds, and that
+    /// the corresponding output is in an initialized state.
     unsafe fn get<const N: usize>(self, buffer: &'a ConstBuffer<T, N>) -> &'a Self::Output;
+
+    /// Returns a mutable reference to the output at this location, without
+    /// performing any bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// It is up to the caller to ensure that the index is in-bounds, and that
+    /// the corresponding output is in an initialized state.
     unsafe fn get_mut<const N: usize>(
         self,
         buffer: &'a mut ConstBuffer<T, N>,
@@ -881,7 +941,12 @@ where
 
     unsafe fn get<const N: usize>(self, buffer: &'a ConstBuffer<T, N>) -> &'a Self::Output {
         debug_assert!(buffer.0.get(self.clone()).is_some());
-        buffer.0.get_unchecked(self).get()
+
+        // SAFETY: The index is required to be in-bounds.
+        let x = unsafe { buffer.0.get_unchecked(self) };
+
+        // SAFETY: The output at the index is required to be in an initialized state.
+        unsafe { x.get() }
     }
 
     unsafe fn get_mut<const N: usize>(
@@ -889,7 +954,12 @@ where
         buffer: &'a mut ConstBuffer<T, N>,
     ) -> &'a mut Self::Output {
         debug_assert!(buffer.0.get(self.clone()).is_some());
-        buffer.0.get_unchecked_mut(self).get_mut()
+
+        // SAFETY: The index is required to be in-bounds.
+        let x = unsafe { buffer.0.get_unchecked_mut(self) };
+
+        // SAFETY: The output at the index is required to be in an initialized state.
+        unsafe { x.get_mut() }
     }
 }
 
@@ -905,7 +975,18 @@ where
 pub trait UninitWrapper {
     type Output: ?Sized;
 
+    /// Returns a shared reference to the contained value.
+    ///
+    /// # Safety
+    ///
+    /// It is up to the caller to ensure that the content is fully initialized.
     unsafe fn get(&self) -> &Self::Output;
+
+    /// Returns a mutable reference to the contained value.
+    ///
+    /// # Safety
+    ///
+    /// It is up to the caller to ensure that the content is fully initialized.
     unsafe fn get_mut(&mut self) -> &mut Self::Output;
 }
 
@@ -913,11 +994,13 @@ impl<T> UninitWrapper for MaybeUninit<T> {
     type Output = T;
 
     unsafe fn get(&self) -> &Self::Output {
-        self.assume_init_ref()
+        // SAFETY: The content is required to be fully initialized.
+        unsafe { self.assume_init_ref() }
     }
 
     unsafe fn get_mut(&mut self) -> &mut Self::Output {
-        self.assume_init_mut()
+        // SAFETY: The content is required to be fully initialized.
+        unsafe { self.assume_init_mut() }
     }
 }
 
@@ -925,10 +1008,12 @@ impl<T> UninitWrapper for [MaybeUninit<T>] {
     type Output = [T];
 
     unsafe fn get(&self) -> &Self::Output {
-        MaybeUninit::slice_assume_init_ref(self)
+        // SAFETY: The content is required to be fully initialized.
+        unsafe { MaybeUninit::slice_assume_init_ref(self) }
     }
 
     unsafe fn get_mut(&mut self) -> &mut Self::Output {
-        MaybeUninit::slice_assume_init_mut(self)
+        // SAFETY: The content is required to be fully initialized.
+        unsafe { MaybeUninit::slice_assume_init_mut(self) }
     }
 }
